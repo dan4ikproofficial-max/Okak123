@@ -1,0 +1,62 @@
+package com.aimornai.pubgmenu.esp
+
+import android.app.*
+import android.content.Context
+import android.content.Intent
+import android.graphics.PixelFormat
+import android.os.Build
+import android.os.IBinder
+import android.view.*
+import androidx.core.app.NotificationCompat
+import com.aimornai.pubgmenu.GameLauncher
+import com.aimornai.pubgmenu.Native
+
+class EspRenderService : Service() {
+    private lateinit var wm: WindowManager
+    private lateinit var surface: SurfaceView
+
+    override fun onBind(i: Intent?): IBinder? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        startForeground(2, notif())
+        wm = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        surface = SurfaceView(this)
+        surface.holder.addCallback(object : SurfaceHolder.Callback {
+            override fun surfaceCreated(h: SurfaceHolder) {
+                val pid = GameLauncher.pid()
+                if (pid > 0) Native.attachToGame(pid)
+                Native.startRender()
+            }
+            override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, hh: Int) {}
+            override fun surfaceDestroyed(h: SurfaceHolder) { Native.stopRender() }
+        })
+        val p = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+            else WindowManager.LayoutParams.TYPE_PHONE,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT
+        )
+        p.gravity = Gravity.TOP or Gravity.START
+        wm.addView(surface, p)
+    }
+
+    override fun onDestroy() {
+        try { Native.stopRender() } catch (_: Throwable) {}
+        try { wm.removeView(surface) } catch (_: Throwable) {}
+        super.onDestroy()
+    }
+
+    private fun notif(): Notification {
+        val ch = NotificationChannel("esp", "esp", NotificationManager.IMPORTANCE_LOW)
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(ch)
+        return NotificationCompat.Builder(this, "esp")
+            .setContentTitle("ESP Layer").setSmallIcon(android.R.drawable.ic_menu_view).build()
+    }
+}
